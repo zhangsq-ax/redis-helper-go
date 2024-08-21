@@ -11,7 +11,10 @@ type KeyMonitor struct {
 	mqClient *message_queue.MessageQueueClient
 }
 
-func NewKeyMonitor(client *redis.Client) *KeyMonitor {
+func NewKeyMonitor(client *redis.Client, autoEnableNotify ...bool) *KeyMonitor {
+	if len(autoEnableNotify) > 0 && autoEnableNotify[0] {
+		_ = enableNotifyKeyspaceEvents(client)
+	}
 	return &KeyMonitor{
 		mqClient: message_queue.NewMessageQueueClient(client),
 	}
@@ -41,4 +44,8 @@ func (km *KeyMonitor) WatchKeySpace(ctx context.Context, key string, filter func
 		handler(msg)
 	}, channel)
 	return err
+}
+
+func enableNotifyKeyspaceEvents(client *redis.Client) error {
+	return client.ConfigSet(context.Background(), "notify-keyspace-events", "KEA$").Err()
 }
