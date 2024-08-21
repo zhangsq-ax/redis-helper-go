@@ -21,6 +21,10 @@ func NewMessageQueueClient(client *redis.Client) *MessageQueueClient {
 	}
 }
 
+func (mq *MessageQueueClient) Options() *redis.Options {
+	return mq.client.Options()
+}
+
 func (mq *MessageQueueClient) Publish(channel string, message any) error {
 	return mq.client.Publish(context.Background(), channel, message).Err()
 }
@@ -66,7 +70,7 @@ func receiveMessageWithRetry(ctx context.Context, pubsub *redis.PubSub, maxRetri
 			}
 			return err
 		}
-		onMessage(msg)
+		go onMessage(msg)
 		break
 	}
 	return nil
