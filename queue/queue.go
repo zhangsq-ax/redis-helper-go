@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
@@ -165,10 +166,22 @@ func (q *Queue) Size() (int64, error) {
 
 func (q *Queue) Rank(item string) (int64, error) {
 	if q.descMode {
-		return q.client.ZRank(context.Background(), q.key, item).Result()
-	} else {
 		return q.client.ZRevRank(context.Background(), q.key, item).Result()
+	} else {
+		return q.client.ZRank(context.Background(), q.key, item).Result()
 	}
+}
+
+func (q *Queue) Exists(item string) (bool, error) {
+	_, err := q.client.ZScore(context.Background(), q.key, item).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (q *Queue) Remove(item string) error {

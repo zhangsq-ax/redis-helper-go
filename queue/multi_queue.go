@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
@@ -158,10 +159,21 @@ func (q *MultiQueue) Size(queueKey string) (int64, error) {
 
 func (q *MultiQueue) Rank(queueKey string, item string) (int64, error) {
 	if q.descMode {
-		return q.client.ZRank(context.Background(), queueKey, item).Result()
-	} else {
 		return q.client.ZRevRank(context.Background(), queueKey, item).Result()
+	} else {
+		return q.client.ZRank(context.Background(), queueKey, item).Result()
 	}
+}
+
+func (q *MultiQueue) Exists(queueKey string, item string) (bool, error) {
+	_, err := q.client.ZScore(context.Background(), queueKey, item).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (q *MultiQueue) Remove(queueKey string, item string) error {
