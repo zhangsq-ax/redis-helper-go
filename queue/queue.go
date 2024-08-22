@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
+	"math"
 	"time"
 )
 
@@ -43,6 +44,97 @@ func (q *Queue) Push(item string, score float64) error {
 		return fmt.Errorf("exist in queue")
 	}
 	return nil
+}
+
+func (q *Queue) Insert(item string, index int64) error {
+	releaseKey := q.mutex.MustAcquireLock(0)
+	defer q.mutex.MustReleaseLock(releaseKey)
+	if index < 0 {
+		return fmt.Errorf("index is invalid")
+	}
+
+	score, err := q.GetScoreByIndex(index)
+	if err != nil {
+		return err
+	}
+	if q.descMode {
+		if score != math.MaxFloat64 {
+			score += 0.05
+		}
+	} else {
+		if score != -math.MaxFloat64 {
+			score -= 0.05
+		}
+	}
+
+	count, err := q.client.ZAdd(context.Background(), q.key, redis.Z{
+		Score:  score,
+		Member: item,
+	}).Result()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("exist in queue")
+	}
+	return nil
+}
+
+func (q *Queue) GetByIndex(index int64) (string, error) {
+	member, err := q.GetMemberByIndex(index)
+	if err != nil {
+		return "", err
+	}
+	if member == nil {
+		return "", nil
+	}
+	return member.Member.(string), nil
+}
+
+func (q *Queue) GetMemberByIndex(index int64) (*redis.Z, error) {
+	var (
+		members []redis.Z
+		err     error
+	)
+	if q.descMode {
+		members, err = q.client.ZRevRangeWithScores(context.Background(), q.key, index, index).Result()
+	} else {
+		members, err = q.client.ZRangeWithScores(context.Background(), q.key, index, index).Result()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(members) == 0 {
+		return nil, nil
+	} else {
+		return &members[0], nil
+	}
+}
+
+func (q *Queue) GetScoreByIndex(index int64) (float64, error) {
+	member, err := q.GetMemberByIndex(index)
+	if err != nil {
+		return 0, err
+	}
+	if member == nil {
+		size, err := q.Size()
+		if err != nil {
+			return 0, err
+		}
+		if size == 0 {
+			if q.descMode {
+				return math.MaxFloat64, nil
+			} else {
+				return -math.MaxFloat64, nil
+			}
+		} else {
+			member, err = q.GetMemberByIndex(size - 1)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	return member.Score, nil
 }
 
 func (q *Queue) Pop() (string, float64, error) {
