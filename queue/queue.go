@@ -29,8 +29,8 @@ func NewQueue(client *redis.Client, key string, descMode ...bool) *Queue {
 }
 
 func (q *Queue) Push(item string, score float64) error {
-	releaseKey := q.mutex.MustAcquireLock()
-	defer q.mutex.ReleaseLock(releaseKey)
+	releaseKey := q.mutex.MustAcquireLock(0)
+	defer q.mutex.MustReleaseLock(releaseKey)
 
 	count, err := q.client.ZAdd(context.Background(), q.key, redis.Z{
 		Score:  score,
@@ -46,8 +46,8 @@ func (q *Queue) Push(item string, score float64) error {
 }
 
 func (q *Queue) Pop() (string, float64, error) {
-	releaseKey := q.mutex.MustAcquireLock()
-	defer q.mutex.ReleaseLock(releaseKey)
+	releaseKey := q.mutex.MustAcquireLock(0)
+	defer q.mutex.MustReleaseLock(releaseKey)
 
 	var (
 		members []redis.Z
@@ -80,15 +80,15 @@ func (q *Queue) Rank(item string) (int64, error) {
 }
 
 func (q *Queue) Remove(item string) error {
-	releaseKey := q.mutex.MustAcquireLock()
-	defer q.mutex.ReleaseLock(releaseKey)
+	releaseKey := q.mutex.MustAcquireLock(0)
+	defer q.mutex.MustReleaseLock(releaseKey)
 
 	return q.client.ZRem(context.Background(), q.key, item).Err()
 }
 
 func (q *Queue) Clean(keepFilter func(member redis.Z) bool) error {
 	releaseKey := q.mutex.MustAcquireLock(10 * time.Second)
-	defer q.mutex.ReleaseLock(releaseKey)
+	defer q.mutex.MustReleaseLock(releaseKey)
 
 	members, err := q.client.ZRangeWithScores(context.Background(), q.key, 0, -1).Result()
 	if err != nil {
@@ -106,8 +106,8 @@ func (q *Queue) Clean(keepFilter func(member redis.Z) bool) error {
 }
 
 func (q *Queue) Clear() error {
-	releaseKey := q.mutex.MustAcquireLock()
-	defer q.mutex.ReleaseLock(releaseKey)
+	releaseKey := q.mutex.MustAcquireLock(0)
+	defer q.mutex.MustReleaseLock(releaseKey)
 
 	return q.client.Del(context.Background(), q.key).Err()
 }

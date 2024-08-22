@@ -56,32 +56,38 @@ func (dm *DistributedMutex) AcquireLockWithSubKey(subKey string, ttl ...time.Dur
 	return "", false
 }
 
-func (dm *DistributedMutex) MustAcquireLock(ttl ...time.Duration) string {
+func (dm *DistributedMutex) MustAcquireLock(interval time.Duration, ttl ...time.Duration) string {
 	var (
 		releaseKey string
 		success    = false
 	)
+	if interval < 50*time.Millisecond {
+		interval = 100 * time.Millisecond
+	}
 	for {
 		releaseKey, success = dm.AcquireLock(ttl...)
 		if success {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(interval)
 	}
 	return releaseKey
 }
 
-func (dm *DistributedMutex) MustAcquireLockWithSubKey(subKey string, ttl ...time.Duration) string {
+func (dm *DistributedMutex) MustAcquireLockWithSubKey(subKey string, interval time.Duration, ttl ...time.Duration) string {
 	var (
 		releaseKey string
 		success    = false
 	)
+	if interval < 50*time.Millisecond {
+		interval = 100 * time.Millisecond
+	}
 	for {
 		releaseKey, success = dm.AcquireLockWithSubKey(subKey, ttl...)
 		if success {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(interval)
 	}
 	return releaseKey
 }
@@ -89,6 +95,9 @@ func (dm *DistributedMutex) MustAcquireLockWithSubKey(subKey string, ttl ...time
 // ReleaseLockWithSubKey release lock
 func (dm *DistributedMutex) ReleaseLockWithSubKey(subKey string, releaseKey string) bool {
 	luaScript := `
+		if redis.call("EXISTS", KEYS[1]) == 0 then
+			return 1
+		end
 		if redis.call("GET", KEYS[1]) == ARGV[1] then
 			return redis.call("DEL", KEYS[1])
 		else
@@ -102,6 +111,30 @@ func (dm *DistributedMutex) ReleaseLockWithSubKey(subKey string, releaseKey stri
 	return result.(int64) > 0
 }
 
+func (dm *DistributedMutex) MustReleaseLockWithSubKey(subKey string, releaseKey string) {
+	success := false
+	for {
+		success = dm.ReleaseLockWithSubKey(subKey, releaseKey)
+		if success {
+			break
+		} else {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+}
+
 func (dm *DistributedMutex) ReleaseLock(releaseKey string) bool {
 	return dm.ReleaseLockWithSubKey("", releaseKey)
+}
+
+func (dm *DistributedMutex) MustReleaseLock(releaseKey string) {
+	success := false
+	for {
+		success = dm.ReleaseLock(releaseKey)
+		if success {
+			break
+		} else {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
 }

@@ -14,21 +14,27 @@ type MultiQueue struct {
 	descMode bool
 }
 
-func NewMultiQueue(client *redis.Client, descMode ...bool) *MultiQueue {
+func NewMultiQueue(client *redis.Client, mutexKey string, mutexTtl time.Duration, descMode ...bool) (*MultiQueue, error) {
 	desc := false
 	if len(descMode) > 0 {
 		desc = descMode[0]
 	}
+	if mutexKey == "" {
+		return nil, fmt.Errorf("mutexKey is empty")
+	}
+	if mutexTtl <= 0 {
+		return nil, fmt.Errorf("mutexTtl is invalid")
+	}
 	return &MultiQueue{
 		client:   client,
-		mutex:    distributed_mutex.NewDistributedMutex(client, "mutex", 5*time.Second),
+		mutex:    distributed_mutex.NewDistributedMutex(client, mutexKey, mutexTtl),
 		descMode: desc,
-	}
+	}, nil
 }
 
 func (q *MultiQueue) Push(queueKey string, item string, score float64) error {
-	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey)
-	defer q.mutex.ReleaseLockWithSubKey(queueKey, releaseKey)
+	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey, 0)
+	defer q.mutex.MustReleaseLockWithSubKey(queueKey, releaseKey)
 
 	count, err := q.client.ZAdd(context.Background(), queueKey, redis.Z{
 		Score:  score,
@@ -44,8 +50,8 @@ func (q *MultiQueue) Push(queueKey string, item string, score float64) error {
 }
 
 func (q *MultiQueue) Pop(queueKey string) (string, float64, error) {
-	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey)
-	defer q.mutex.ReleaseLockWithSubKey(queueKey, releaseKey)
+	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey, 0)
+	defer q.mutex.MustReleaseLockWithSubKey(queueKey, releaseKey)
 
 	var (
 		members []redis.Z
@@ -78,15 +84,15 @@ func (q *MultiQueue) Rank(queueKey string, item string) (int64, error) {
 }
 
 func (q *MultiQueue) Remove(queueKey string, item string) error {
-	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey)
-	defer q.mutex.ReleaseLockWithSubKey(queueKey, releaseKey)
+	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey, 0)
+	defer q.mutex.MustReleaseLockWithSubKey(queueKey, releaseKey)
 
 	return q.client.ZRem(context.Background(), queueKey, item).Err()
 }
 
 func (q *MultiQueue) Clean(queueKey string, keepFilter func(member redis.Z) bool) error {
 	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey, 10*time.Second)
-	defer q.mutex.ReleaseLockWithSubKey(queueKey, releaseKey)
+	defer q.mutex.MustReleaseLockWithSubKey(queueKey, releaseKey)
 
 	members, err := q.client.ZRangeWithScores(context.Background(), queueKey, 0, -1).Result()
 	if err != nil {
@@ -104,8 +110,8 @@ func (q *MultiQueue) Clean(queueKey string, keepFilter func(member redis.Z) bool
 }
 
 func (q *MultiQueue) Clear(queueKey string) error {
-	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey)
-	defer q.mutex.ReleaseLockWithSubKey(queueKey, releaseKey)
+	releaseKey := q.mutex.MustAcquireLockWithSubKey(queueKey, 0)
+	defer q.mutex.MustReleaseLockWithSubKey(queueKey, releaseKey)
 
 	return q.client.Del(context.Background(), queueKey).Err()
 }
