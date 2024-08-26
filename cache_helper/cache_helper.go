@@ -19,12 +19,12 @@ func NewCacheHelper(client *redis.Client, cacheKeyPrefix string) *CacheHelper {
 	}
 }
 
-func (c *CacheHelper) cacheKey(key string) string {
+func (c *CacheHelper) FullCacheKey(key string) string {
 	return fmt.Sprintf("%s%s", c.cacheKeyPrefix, key)
 }
 
 func (c *CacheHelper) Cache(key string, value any, expiration time.Duration) (string, error) {
-	cacheKey := c.cacheKey(key)
+	cacheKey := c.FullCacheKey(key)
 	if expiration == 0 {
 		return cacheKey, c.client.Set(context.Background(), cacheKey, value, 0).Err()
 	}
@@ -32,11 +32,11 @@ func (c *CacheHelper) Cache(key string, value any, expiration time.Duration) (st
 }
 
 func (c *CacheHelper) Get(key string) (string, error) {
-	return c.client.Get(context.Background(), c.cacheKey(key)).Result()
+	return c.client.Get(context.Background(), c.FullCacheKey(key)).Result()
 }
 
 func (c *CacheHelper) Exists(key string) (bool, error) {
-	count, err := c.client.Exists(context.Background(), c.cacheKey(key)).Result()
+	count, err := c.client.Exists(context.Background(), c.FullCacheKey(key)).Result()
 	if err != nil {
 		return false, err
 	}
@@ -44,5 +44,5 @@ func (c *CacheHelper) Exists(key string) (bool, error) {
 }
 
 func (c *CacheHelper) Delete(key string) error {
-	return c.client.Del(context.Background(), c.cacheKey(key)).Err()
+	return c.client.Del(context.Background(), c.FullCacheKey(key)).Err()
 }
