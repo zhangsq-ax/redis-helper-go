@@ -1,4 +1,4 @@
-package cache
+package cache_helper
 
 import (
 	"context"
@@ -7,31 +7,31 @@ import (
 	"time"
 )
 
-type Cache struct {
+type CacheHelper struct {
 	client         *redis.Client
 	cacheKeyPrefix string
 }
 
-func NewCache(client *redis.Client, cacheKeyPrefix string) *Cache {
-	return &Cache{
+func NewCacheHelper(client *redis.Client, cacheKeyPrefix string) *CacheHelper {
+	return &CacheHelper{
 		client:         client,
 		cacheKeyPrefix: cacheKeyPrefix,
 	}
 }
 
-func (c *Cache) cacheKey(key string) string {
+func (c *CacheHelper) cacheKey(key string) string {
 	return fmt.Sprintf("%s%s", c.cacheKeyPrefix, key)
 }
 
-func (c *Cache) Cache(key string, value string, expiration time.Duration) error {
+func (c *CacheHelper) Cache(key string, value string, expiration time.Duration) error {
 	return c.client.SetEx(context.Background(), c.cacheKey(key), value, expiration).Err()
 }
 
-func (c *Cache) Get(key string) (string, error) {
+func (c *CacheHelper) Get(key string) (string, error) {
 	return c.client.Get(context.Background(), c.cacheKey(key)).Result()
 }
 
-func (c *Cache) Exists(key string) (bool, error) {
+func (c *CacheHelper) Exists(key string) (bool, error) {
 	count, err := c.client.Exists(context.Background(), c.cacheKey(key)).Result()
 	if err != nil {
 		return false, err
@@ -39,6 +39,6 @@ func (c *Cache) Exists(key string) (bool, error) {
 	return count > 0, nil
 }
 
-func (c *Cache) Delete(key string) error {
+func (c *CacheHelper) Delete(key string) error {
 	return c.client.Del(context.Background(), c.cacheKey(key)).Err()
 }
