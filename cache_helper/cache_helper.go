@@ -23,7 +23,7 @@ func (c *CacheHelper) cacheKey(key string) string {
 	return fmt.Sprintf("%s%s", c.cacheKeyPrefix, key)
 }
 
-func (c *CacheHelper) Cache(key string, value string, expiration time.Duration) error {
+func (c *CacheHelper) Cache(key string, value any, expiration time.Duration) error {
 	if expiration == 0 {
 		return c.client.Set(context.Background(), c.cacheKey(key), value, 0).Err()
 	}
