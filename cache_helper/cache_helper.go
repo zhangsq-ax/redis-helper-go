@@ -23,11 +23,12 @@ func (c *CacheHelper) cacheKey(key string) string {
 	return fmt.Sprintf("%s%s", c.cacheKeyPrefix, key)
 }
 
-func (c *CacheHelper) Cache(key string, value any, expiration time.Duration) error {
+func (c *CacheHelper) Cache(key string, value any, expiration time.Duration) (string, error) {
+	cacheKey := c.cacheKey(key)
 	if expiration == 0 {
-		return c.client.Set(context.Background(), c.cacheKey(key), value, 0).Err()
+		return cacheKey, c.client.Set(context.Background(), cacheKey, value, 0).Err()
 	}
-	return c.client.SetEx(context.Background(), c.cacheKey(key), value, expiration).Err()
+	return cacheKey, c.client.SetEx(context.Background(), cacheKey, value, expiration).Err()
 }
 
 func (c *CacheHelper) Get(key string) (string, error) {
