@@ -19,14 +19,18 @@ func NewEventBus(client *redis.Client, eventChannelPrefix string) *EventBus {
 	}
 }
 
+func (eb *EventBus) FullChannel(eventName string) string {
+	return fmt.Sprintf("%s%s", eb.eventChannelPrefix, eventName)
+}
+
 func (eb *EventBus) Trigger(eventName string, payload []byte) error {
-	return eb.mqClient.Publish(fmt.Sprintf("%s%s", eb.eventChannelPrefix, eventName), payload)
+	return eb.mqClient.Publish(eb.FullChannel(eventName), payload)
 }
 
 func (eb *EventBus) AddEventListener(eventName string, handler func(eventName string, payload []byte)) (string, error) {
 	return eb.mqClient.Subscribe(context.Background(), func(msg *redis.Message) {
 		handler(eventName, []byte(msg.Payload))
-	}, fmt.Sprintf("%s%s", eb.eventChannelPrefix, eventName))
+	}, eb.FullChannel(eventName))
 }
 
 func (eb *EventBus) RemoveEventListener(subscribeId string) {
