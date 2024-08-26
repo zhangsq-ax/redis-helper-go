@@ -24,6 +24,9 @@ func (c *CacheHelper) cacheKey(key string) string {
 }
 
 func (c *CacheHelper) Cache(key string, value string, expiration time.Duration) error {
+	if expiration == 0 {
+		return c.client.Set(context.Background(), c.cacheKey(key), value, 0).Err()
+	}
 	return c.client.SetEx(context.Background(), c.cacheKey(key), value, expiration).Err()
 }
 
