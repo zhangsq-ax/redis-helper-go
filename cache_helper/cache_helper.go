@@ -43,6 +43,10 @@ func (c *CacheHelper) Exists(key string) (bool, error) {
 	return count > 0, nil
 }
 
+func (c *CacheHelper) ResetExpiration(key string, expiration time.Duration) error {
+	return c.client.Expire(context.Background(), c.FullCacheKey(key), expiration).Err()
+}
+
 func (c *CacheHelper) Delete(key string) error {
 	return c.client.Del(context.Background(), c.FullCacheKey(key)).Err()
 }
