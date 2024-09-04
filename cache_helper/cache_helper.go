@@ -47,6 +47,43 @@ func (c *CacheHelper) ResetExpiration(key string, expiration time.Duration) erro
 	return c.client.Expire(context.Background(), c.FullCacheKey(key), expiration).Err()
 }
 
+func (c *CacheHelper) Each(keyPattern string, fn func(key string) (bool, error)) error {
+	var (
+		cursor = uint64(0)
+		keys   []string
+		err    error
+	)
+	for {
+		keys, cursor, err = c.client.Scan(context.Background(), cursor, keyPattern, 10).Result()
+		if err != nil {
+			return err
+		}
+		if cursor == 0 {
+			break
+		}
+		for _, key := range keys {
+			ok, err := fn(key)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+func (c *CacheHelper) EachWithValue(keyPattern string, fn func(key string, value string) (bool, error)) error {
+	return c.Each(keyPattern, func(key string) (bool, error) {
+		value, err := c.client.Get(context.Background(), key).Result()
+		if err != nil {
+			return false, err
+		}
+		return fn(key, value)
+	})
+}
+
 func (c *CacheHelper) Delete(key string) error {
 	return c.client.Del(context.Background(), c.FullCacheKey(key)).Err()
 }
