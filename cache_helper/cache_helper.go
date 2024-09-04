@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"strings"
 	"time"
 )
 
@@ -52,17 +53,18 @@ func (c *CacheHelper) Each(keyPattern string, fn func(key string) (bool, error))
 		cursor = uint64(0)
 		keys   []string
 		err    error
+		ctx    = context.Background()
+		match  = c.FullCacheKey(keyPattern)
+		ok     bool
 	)
 	for {
-		keys, cursor, err = c.client.Scan(context.Background(), cursor, keyPattern, 10).Result()
+		keys, cursor, err = c.client.Scan(ctx, cursor, match, 10).Result()
 		if err != nil {
 			return err
 		}
-		if cursor == 0 {
-			break
-		}
+
 		for _, key := range keys {
-			ok, err := fn(key)
+			ok, err = fn(strings.Replace(key, c.cacheKeyPrefix, "", 1))
 			if err != nil {
 				return err
 			}
@@ -70,17 +72,20 @@ func (c *CacheHelper) Each(keyPattern string, fn func(key string) (bool, error))
 				return nil
 			}
 		}
+		if cursor == 0 {
+			break
+		}
 	}
 	return nil
 }
 
 func (c *CacheHelper) EachWithValue(keyPattern string, fn func(key string, value string) (bool, error)) error {
 	return c.Each(keyPattern, func(key string) (bool, error) {
-		value, err := c.client.Get(context.Background(), key).Result()
+		value, err := c.Get(key)
 		if err != nil {
 			return false, err
 		}
-		return fn(key, value)
+		return fn(strings.Replace(key, c.cacheKeyPrefix, "", 1), value)
 	})
 }
 
