@@ -7,6 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -174,6 +175,37 @@ func (q *MultiQueue) Exists(queueKey string, item string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (q *MultiQueue) Each(queueKey string, match string, fn func(member string, score float64) (bool, error)) error {
+	var (
+		cursor  = uint64(0)
+		ctx     = context.Background()
+		err     error
+		members []string
+		ok      bool
+	)
+	for {
+		members, cursor, err = q.client.ZScan(ctx, queueKey, cursor, match, 10).Result()
+		if err != nil {
+			return err
+		}
+		for i := 0; i < len(members); i += 2 {
+			member := members[i]
+			score, _ := strconv.ParseFloat(members[i+1], 64)
+			ok, err = fn(member, score)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+		}
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
 }
 
 func (q *MultiQueue) Remove(queueKey string, item string) error {
