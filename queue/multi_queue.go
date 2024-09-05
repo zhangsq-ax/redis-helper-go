@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	redis_helper "github.com/zhangsq-ax/redis-helper-go"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
 	"math"
 	"strconv"
@@ -12,9 +13,10 @@ import (
 )
 
 type MultiQueue struct {
-	client   *redis.Client
-	mutex    *distributed_mutex.DistributedMutex
-	descMode bool
+	client            *redis.Client
+	mutex             *distributed_mutex.DistributedMutex
+	descMode          bool
+	redisMajorVersion int
 }
 
 func NewMultiQueue(client *redis.Client, mutexKey string, mutexTtl time.Duration, descMode ...bool) (*MultiQueue, error) {
@@ -28,10 +30,14 @@ func NewMultiQueue(client *redis.Client, mutexKey string, mutexTtl time.Duration
 	if mutexTtl <= 0 {
 		return nil, fmt.Errorf("mutexTtl is invalid")
 	}
+
+	majorVersion, _ := redis_helper.ServerMajorVersion(client)
+
 	return &MultiQueue{
-		client:   client,
-		mutex:    distributed_mutex.NewDistributedMutex(client, mutexKey, mutexTtl),
-		descMode: desc,
+		client:            client,
+		mutex:             distributed_mutex.NewDistributedMutex(client, mutexKey, mutexTtl),
+		descMode:          desc,
+		redisMajorVersion: majorVersion,
 	}, nil
 }
 
@@ -141,9 +147,17 @@ func (q *MultiQueue) Pop(queueKey string) (string, float64, error) {
 		err     error
 	)
 	if q.descMode {
-		members, err = q.client.ZPopMax(context.Background(), queueKey).Result()
+		if q.redisMajorVersion > 4 && q.redisMajorVersion > 0 {
+			members, err = q.client.ZPopMax(context.Background(), queueKey).Result()
+		} else {
+			members, err = zPopMax(q.client, queueKey)
+		}
 	} else {
-		members, err = q.client.ZPopMin(context.Background(), queueKey).Result()
+		if q.redisMajorVersion > 4 && q.redisMajorVersion > 0 {
+			members, err = q.client.ZPopMin(context.Background(), queueKey).Result()
+		} else {
+			members, err = zPopMin(q.client, queueKey)
+		}
 	}
 	if err != nil {
 		return "", 0, err

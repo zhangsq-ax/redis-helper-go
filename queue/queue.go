@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	redis_helper "github.com/zhangsq-ax/redis-helper-go"
 	"github.com/zhangsq-ax/redis-helper-go/distributed_mutex"
 	"math"
 	"strconv"
@@ -12,10 +13,11 @@ import (
 )
 
 type Queue struct {
-	client   *redis.Client
-	mutex    *distributed_mutex.DistributedMutex
-	key      string
-	descMode bool
+	client            *redis.Client
+	mutex             *distributed_mutex.DistributedMutex
+	key               string
+	descMode          bool
+	redisMajorVersion int
 }
 
 func NewQueue(client *redis.Client, key string, descMode ...bool) *Queue {
@@ -23,11 +25,15 @@ func NewQueue(client *redis.Client, key string, descMode ...bool) *Queue {
 	if len(descMode) > 0 {
 		desc = descMode[0]
 	}
+
+	majorVersion, _ := redis_helper.ServerMajorVersion(client)
+
 	return &Queue{
-		client:   client,
-		mutex:    distributed_mutex.NewDistributedMutex(client, fmt.Sprintf("%s:mutex", key), 5*time.Second),
-		key:      key,
-		descMode: desc,
+		client:            client,
+		mutex:             distributed_mutex.NewDistributedMutex(client, fmt.Sprintf("%s:mutex", key), 5*time.Second),
+		key:               key,
+		descMode:          desc,
+		redisMajorVersion: majorVersion,
 	}
 }
 
@@ -148,9 +154,17 @@ func (q *Queue) Pop() (string, float64, error) {
 		err     error
 	)
 	if q.descMode {
-		members, err = q.client.ZPopMax(context.Background(), q.key).Result()
+		if q.redisMajorVersion > 4 && q.redisMajorVersion > 0 {
+			members, err = q.client.ZPopMax(context.Background(), q.key).Result()
+		} else {
+			members, err = zPopMax(q.client, q.key)
+		}
 	} else {
-		members, err = q.client.ZPopMin(context.Background(), q.key).Result()
+		if q.redisMajorVersion > 4 && q.redisMajorVersion > 0 {
+			members, err = q.client.ZPopMin(context.Background(), q.key).Result()
+		} else {
+			members, err = zPopMin(q.client, q.key)
+		}
 	}
 	if err != nil {
 		return "", 0, err
@@ -247,4 +261,56 @@ func (q *Queue) Clear() error {
 	defer q.mutex.MustReleaseLock(releaseKey)
 
 	return q.client.Del(context.Background(), q.key).Err()
+}
+
+func zPopMin(client *redis.Client, key string) ([]redis.Z, error) {
+	luaScript := `
+local min_element = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+if #min_element > 0 then
+    redis.call('ZREM', KEYS[1], min_element[1])
+end
+return min_element`
+
+	res, err := client.Eval(context.Background(), luaScript, []string{key}).Result()
+	if err != nil {
+		return nil, err
+	}
+	record := res.([]any)
+	result := make([]redis.Z, 0)
+	if len(record) > 0 {
+		member := record[0].(string)
+		score, err := strconv.ParseFloat(record[1].(string), 64)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, redis.Z{Member: member, Score: score})
+	}
+
+	return result, nil
+}
+
+func zPopMax(client *redis.Client, key string) ([]redis.Z, error) {
+	luaScript := `
+local max_element = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+if #max_element > 0 then
+    redis.call('ZREM', KEYS[1], max_element[1])
+end
+return max_element`
+
+	res, err := client.Eval(context.Background(), luaScript, []string{key}).Result()
+	if err != nil {
+		return nil, err
+	}
+	record := res.([]any)
+	result := make([]redis.Z, 0)
+	if len(record) > 0 {
+		member := record[0].(string)
+		score, err := strconv.ParseFloat(record[1].(string), 64)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, redis.Z{Member: member, Score: score})
+	}
+
+	return result, nil
 }
